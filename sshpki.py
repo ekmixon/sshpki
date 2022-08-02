@@ -123,14 +123,12 @@ def rl_input(prompt, prefill=''):
 
 def ask(q, r, default=""):
     r = [x.lower() for x in r]
-    q2 = "%s ? (%s) " % (q, "/".join(r))
+    q2 = f'{q} ? ({"/".join(r)}) '
     if default:
-        q2 += "[%s] " % default
+        q2 += f"[{default}] "
 
     while True:
-        ans = raw_input(q2).lower()
-        if not ans:
-            ans = default
+        ans = raw_input(q2).lower() or default
         if ans and ans in r:
             break
     return ans
@@ -146,9 +144,11 @@ def ensure_arg(name):
         @functools.wraps(f)
         def wrapper(self, arg):
             if not arg:
-                arg = rl_input("Enter %s: " % name)
+                arg = rl_input(f"Enter {name}: ")
             return f(self, arg)
+
         return wrapper
+
     return deco
 
 ##  ___ _  _____
@@ -219,13 +219,12 @@ def get_cert_validity(cert_file):
     cmd = ["ssh-keygen", "-L", "-f", cert_file]
     o = check_output(cmd)
     valid = re.search(".*Valid: (.*)$", o, re.MULTILINE).groups()
-    if not valid or valid and "forever" in valid[0]:
+    if not valid or "forever" in valid[0]:
         return None, None
-    else:
-        start_s,end_s = re.search("^from (.*) to (.*)$", valid[0]).groups()
-        start = datetime.datetime.strptime(start_s, "%Y-%m-%dT%H:%M:%S")
-        end = datetime.datetime.strptime(end_s, "%Y-%m-%dT%H:%M:%S")
-        return start, end
+    start_s,end_s = re.search("^from (.*) to (.*)$", valid[0]).groups()
+    start = datetime.datetime.strptime(start_s, "%Y-%m-%dT%H:%M:%S")
+    end = datetime.datetime.strptime(end_s, "%Y-%m-%dT%H:%M:%S")
+    return start, end
 
 def sign_key(options, cert_name, ca, key, profile):
     opts = []
@@ -340,22 +339,20 @@ def profile_summary(prof):
                "x11_forwarding", "port_forwarding", "pty", "user_rc", "validity" ]:
         v = getattr(prof, k)
         if v is False or v is not True and v:
-            s.append("%s=%s" % (k, v))
+            s.append(f"{k}={v}")
     if not s:
         s = ["no limits"]
     return ", ".join(s)
 
 
 def get_one_by(table, **kargs):
-    res = list(table.selectBy(**kargs))
-    if len(res) > 0:
+    if res := list(table.selectBy(**kargs)):
         return(res[0])
 
 def get_by_name(table, name):
-    obj = get_one_by(table, name=name)
-    if obj:
+    if obj := get_one_by(table, name=name):
         return obj
-    print "%s [%s] not found" % (table.__name__, name)
+    obj = get_one_by(table, name=name)
 
 def get_key_by_name(name):
     return get_by_name(Key, name)
@@ -370,10 +367,9 @@ def get_profile_template_by_name(name):
     return get_by_name(ProfileTemplate, name)
 
 def get_yubikey_by_serial(serial):
-    yk = get_one_by(Yubikey, serial=serial)
-    if yk:
+    if yk := get_one_by(Yubikey, serial=serial):
         return yk
-    print "Yubikey with serial [%s] not found in database" % serial
+    yk = get_one_by(Yubikey, serial=serial)
 
 
 ## __   __    _    _ _                                              _
@@ -545,8 +541,7 @@ class CACLI(CLI):
 
     @ensure_arg("CA")
     def do_use(self, ca_name):
-        ca = get_CA_by_name(ca_name)
-        if ca:
+        if ca := get_CA_by_name(ca_name):
             cli = UseCLI(self.options, ca)
             cli.cmdloop_catcherrors()
 
@@ -611,14 +606,12 @@ class KeyCLI(CLI):
 
     @ensure_arg("key")
     def do_del(self, key_name):
-        key = get_key_by_name(key_name)
-        if key:
+        if key := get_key_by_name(key_name):
             key.delete_key()
 
     @ensure_arg("key")
     def do_revoke(self, key_name):
-        key = get_key_by_name(key_name)
-        if key:
+        if key := get_key_by_name(key_name):
             revoke_key(self.options, key)
 
     @ensure_arg("key file")
@@ -630,9 +623,9 @@ class KeyCLI(CLI):
         if not pubkey.startswith("ssh-rsa"):
             pubkey = check_output(["ssh-keygen", "-yf", key_file])
             priv = True
-        name = rl_input("name: ")
-        k = Key(name=name, bits=bits, pubkey=pubkey)
         if priv:
+            name = rl_input("name: ")
+            k = Key(name=name, bits=bits, pubkey=pubkey)
             FileExport(key=k, filename=key_file)
 
 
@@ -713,8 +706,7 @@ class UseCLI(CLI):
 
     @ensure_arg("key")
     def do_sign(self, key_name):
-        key = get_key_by_name(key_name)
-        if key:
+        if key := get_key_by_name(key_name):
             cert_name = rl_input("Enter cert name: ", "%s_%i" % (key_name, self.ca.serial))
             proftmpl = get_profile_template(self.options)
             sign_key(self.options, cert_name, self.ca, key, proftmpl.profile)
@@ -757,8 +749,7 @@ class UseCLI(CLI):
 
     @ensure_arg("key")
     def do_revoke(self, key_name):
-        key = get_key_by_name(key_name)
-        if key:
+        if key := get_key_by_name(key_name):
             revoke_key(self.options, key)
 
     @ensure_arg("key")
@@ -895,14 +886,14 @@ class ProfileTemplateCLI(CLI):
                 ("principals", "Principals"),
                 ("force_command", "Force command"),
                 ("source_address", "Enforce source addresses"), ]:
-            ans = rl_input("%s: " % txt, in_prof.get(opt, ""))
+            ans = rl_input(f"{txt}: ", in_prof.get(opt, ""))
             prof[opt] = ans
         for opt,txt in [("agent_forwarding", "agent forwarding"),
                         ("port_forwarding", "port forwarding"),
                         ("x11_forwarding", "X11 forwarding"),
                         ("pty", "PTY allocation"),
                         ("user_rc", "user ~/.ssh/rc file"), ]:
-            ans = ask("Permit %s" % txt, "yn", in_prof.get(opt, ""))
+            ans = ask(f"Permit {txt}", "yn", in_prof.get(opt, ""))
             prof[opt] = ans == "y"
         while True:
             ans = rl_input("""validity interval
@@ -913,7 +904,6 @@ class ProfileTemplateCLI(CLI):
 """, in_prof.get("validity", ""))
             if re.match("(|[0-9]{8}|[0-9]{14}|[+-]([0-9]+(|[sSmMhHdDwW])){1,})$", ans):
                 break
-            print "invalid date expression"
         prof["validity"] = ans
         return prof
 
@@ -926,17 +916,15 @@ class ProfileTemplateCLI(CLI):
 
     @ensure_arg("profile")
     def do_delete(self, name):
-        pt = get_profile_template_by_name(name)
-        if pt:
+        if pt := get_profile_template_by_name(name):
             p = pt.profile
             p.delete(p.id)
             pt.delete(pt.id)
-            print "Profile template [%s] deleted." % name
+            p = pt.profile
 
     @ensure_arg("profile")
     def do_edit(self, name):
-        pt = get_profile_template_by_name(name)
-        if pt:
+        if pt := get_profile_template_by_name(name):
             p = pt.profile
             dct = {k:getattr(p,k) for k in p.sqlmeta.columns}
             in_prof = {k:("ny"[v] if type(v) is bool else v) for k,v in dct.iteritems() if v is not None}
@@ -990,10 +978,9 @@ class YubikeyCLI(CLI):
 
     @ensure_arg("serial number")
     def do_del(self, serial):
-        yk = get_yubikey_by_serial(serial)
-        if yk:
+        if yk := get_yubikey_by_serial(serial):
             Yubikey.delete(yk.id)
-            print "yubikey deleted"
+            Yubikey.delete(yk.id)
 
 ##  ___  ___
 ## |   \| _ )
@@ -1002,7 +989,7 @@ class YubikeyCLI(CLI):
 ##
 
 def create_pki(fname):
-    cnx = "sqlite://"+os.path.realpath(fname)
+    cnx = f"sqlite://{os.path.realpath(fname)}"
     sqlhub.processConnection=connectionForURI(cnx)
     for tb in [Meta, CA, Key, Cert, Profile, ProfileTemplate,
                FileExport, YubikeyExport, Yubikey]:
@@ -1011,7 +998,7 @@ def create_pki(fname):
     Meta(version=DBVERSION, pkiname=name)
 
 def open_pki(fname):
-    cnx = "sqlite://"+os.path.realpath(fname)
+    cnx = f"sqlite://{os.path.realpath(fname)}"
     sqlhub.processConnection=connectionForURI(cnx)
     m = Meta.select()[0]
     if m.version != DBVERSION:
